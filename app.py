@@ -85,6 +85,44 @@ def train_model(df: pd.DataFrame):
 df = load_data()
 model, model_columns, coefficients, X_test, y_test, y_pred, metrics = train_model(df)
 
+
+def numeric_input_with_range_hint(label: str, column: str, step, integer: bool = False):
+    """
+    Draws a plain numeric entry box (st.number_input) for one feature.
+    Unlike a slider, this has NO min/max enforced by Streamlit — the user
+    can type any number, including ones nobody in the dataset ever had.
+    Instead, after they type something, we compare it to the range
+    actually observed in the dataset (column min/max) and — if it falls
+    outside that range — show a light, non-blocking warning caption right
+    underneath. The value the user typed is still used for the
+    prediction either way; we're only informing, never refusing input.
+    """
+    lo = df[column].min()
+    hi = df[column].max()
+    default = df[column].median()
+
+    if integer:
+        # For whole-number features (like a count of projects or absence
+        # days), pass plain Python ints so Streamlit draws an integer
+        # spinner (no decimal point) instead of a float box.
+        lo, hi, default = int(lo), int(hi), int(round(default))
+        value = st.number_input(label, value=default, step=int(step))
+    else:
+        lo, hi, default = float(lo), float(hi), float(default)
+        value = st.number_input(label, value=default, step=float(step))
+
+    # :orange[...] is Streamlit's markdown syntax for colored text. Using
+    # st.caption (small, muted text) with an orange warning icon keeps
+    # this feeling like a gentle heads-up rather than a blocking error.
+    if value < lo or value > hi:
+        st.caption(
+            f":orange[⚠️ Typical range in the data is {lo:g}–{hi:g}. "
+            "This value is outside that range, but it'll still be used.]"
+        )
+
+    return value
+
+
 st.title("📈 Employee Productivity Predictor")
 st.caption(
     "A linear regression demo trained on a synthetic HR dataset "
@@ -113,59 +151,31 @@ with predict_tab:
         )
         job_level = st.selectbox("Job Level", JOB_LEVEL_ORDER)
 
-        # For every numeric slider below, we pull the real minimum/maximum
-        # seen in the dataset (df[col].min() / .max()) so users can't drag
-        # a slider to a value that never occurs in real data, and we
-        # default to the column's median (the "middle" value) as a
-        # reasonable starting point.
-        years_experience = st.slider(
-            "Years of Experience",
-            min_value=float(df["Years_of_Experience"].min()),
-            max_value=float(df["Years_of_Experience"].max()),
-            value=float(df["Years_of_Experience"].median()),
-            step=0.5,
+        # Every field below is a plain number box (st.number_input), not a
+        # slider — you can type any value, including unrealistic ones. If
+        # what you type falls outside the range actually seen in the
+        # dataset, numeric_input_with_range_hint() (defined above) shows a
+        # light warning caption underneath, but never blocks the input.
+        years_experience = numeric_input_with_range_hint(
+            "Years of Experience", "Years_of_Experience", step=0.5
         )
-        training_hours = st.slider(
-            "Training Hours (this year)",
-            min_value=float(df["Training_Hours"].min()),
-            max_value=float(df["Training_Hours"].max()),
-            value=float(df["Training_Hours"].median()),
-            step=1.0,
+        training_hours = numeric_input_with_range_hint(
+            "Training Hours (this year)", "Training_Hours", step=1.0
         )
-        working_hours = st.slider(
-            "Monthly Working Hours",
-            min_value=float(df["Monthly_Working_Hours"].min()),
-            max_value=float(df["Monthly_Working_Hours"].max()),
-            value=float(df["Monthly_Working_Hours"].median()),
-            step=1.0,
+        working_hours = numeric_input_with_range_hint(
+            "Monthly Working Hours", "Monthly_Working_Hours", step=1.0
         )
-        projects_completed = st.slider(
-            "Projects Completed (this month)",
-            min_value=int(df["Projects_Completed"].min()),
-            max_value=int(df["Projects_Completed"].max()),
-            value=int(df["Projects_Completed"].median()),
-            step=1,
+        projects_completed = numeric_input_with_range_hint(
+            "Projects Completed (this month)", "Projects_Completed", step=1, integer=True
         )
-        avg_task_time = st.slider(
-            "Average Task Completion Time (hours)",
-            min_value=float(df["Average_Task_Completion_Time"].min()),
-            max_value=float(df["Average_Task_Completion_Time"].max()),
-            value=float(df["Average_Task_Completion_Time"].median()),
-            step=0.1,
+        avg_task_time = numeric_input_with_range_hint(
+            "Average Task Completion Time (hours)", "Average_Task_Completion_Time", step=0.1
         )
-        absence_days = st.slider(
-            "Absence Days (this month)",
-            min_value=int(df["Absence_Days"].min()),
-            max_value=int(df["Absence_Days"].max()),
-            value=int(df["Absence_Days"].median()),
-            step=1,
+        absence_days = numeric_input_with_range_hint(
+            "Absence Days (this month)", "Absence_Days", step=1, integer=True
         )
-        engagement_score = st.slider(
-            "Engagement Score",
-            min_value=float(df["Engagement_Score"].min()),
-            max_value=float(df["Engagement_Score"].max()),
-            value=float(df["Engagement_Score"].median()),
-            step=1.0,
+        engagement_score = numeric_input_with_range_hint(
+            "Engagement Score", "Engagement_Score", step=1.0
         )
 
         # Bundle every widget's current value into one plain dictionary,
@@ -193,7 +203,8 @@ with predict_tab:
     # The training target was clipped to a 0-100 scale (see
     # generate_dataset.py), but a raw linear regression formula has no idea
     # a "score" is supposed to stay in that range — with a favorable-enough
-    # combination of slider values it can predict above 100 or below 0. We
+    # (or now, with free-typed numbers, even unrealistic-enough) combination
+    # of input values it can predict above 100 or below 0. We
     # clip the DISPLAYED prediction the same way the training data was
     # clipped, so the headline number always stays on the scale the app
     # advertises ("... / 100").
