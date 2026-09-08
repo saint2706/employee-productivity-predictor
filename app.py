@@ -243,7 +243,13 @@ with predict_tab:
         hist_fig.add_trace(
             go.Histogram(
                 x=df[TARGET_COLUMN],
-                nbinsx=40,
+                # Pin the bins to the score's actual 0-100 scale instead of
+                # leaving Plotly to pick "nice" bin edges on its own — with
+                # nbinsx alone, Plotly can round to a bin width/offset (e.g.
+                # 97.5-102.49) that overshoots past 100, implying scores
+                # that can't actually occur (the target is clipped to
+                # 0-100 in generate_dataset.py).
+                xbins=dict(start=0, end=100, size=2.5),
                 name="All employees",
                 marker_color="#6C8EBF",
             )
@@ -265,7 +271,10 @@ with predict_tab:
             height=320,
             margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(hist_fig, width='stretch')
+        # The modebar (zoom/pan/export icons) floats over the top-right of
+        # the chart; in this narrow column the title wraps right into it,
+        # so it's hidden rather than fixed with fragile margin tweaks.
+        st.plotly_chart(hist_fig, width='stretch', config={"displayModeBar": False})
 
         # --- Contribution breakdown (waterfall chart) ----------------------
         # A linear regression prediction is always:
@@ -321,7 +330,7 @@ with predict_tab:
             margin=dict(t=50, b=10, l=10, r=10),
             showlegend=False,
         )
-        st.plotly_chart(waterfall_fig, width='stretch')
+        st.plotly_chart(waterfall_fig, width='stretch', config={"displayModeBar": False})
 
 
 # =================================================================================
@@ -379,7 +388,7 @@ with performance_tab:
             height=400,
             margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(scatter_fig, width='stretch')
+        st.plotly_chart(scatter_fig, width='stretch', config={"displayModeBar": False})
 
     # --- Residuals plot -----------------------------------------------------------
     with chart_right:
@@ -407,7 +416,7 @@ with performance_tab:
             height=400,
             margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(resid_fig, width='stretch')
+        st.plotly_chart(resid_fig, width='stretch', config={"displayModeBar": False})
 
     # --- Learned coefficients bar chart --------------------------------------------
     st.subheader("What the model learned")
@@ -433,4 +442,4 @@ with performance_tab:
         height=500,
         margin=dict(t=10, b=10, l=10, r=10),
     )
-    st.plotly_chart(coef_fig, width='stretch')
+    st.plotly_chart(coef_fig, width='stretch', config={"displayModeBar": False})
