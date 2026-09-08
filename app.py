@@ -20,7 +20,6 @@ It will open a browser tab automatically.
 
 import streamlit as st                       # the web app framework itself
 import pandas as pd                            # tables (DataFrames)
-import numpy as np                              # numeric arrays/math
 import plotly.graph_objects as go               # interactive charts
 
 from sklearn.model_selection import train_test_split
@@ -42,6 +41,12 @@ NUMERIC_FEATURES = [
 CATEGORICAL_FEATURES = ["Department", "Job_Level"]
 TARGET_COLUMN = "Monthly_Productivity_Score"
 
+# The five job levels IN SENIORITY ORDER (not alphabetical — alphabetical
+# would put "Lead" before "Junior"). This must match the `job_levels` list
+# in generate_dataset.py. We check that match at load time below (see
+# load_data) so a mismatch fails loudly instead of silently mispredicting.
+JOB_LEVEL_ORDER = ["Junior", "Mid", "Senior", "Lead", "Manager"]
+
 # --- Page setup ----------------------------------------------------------------
 
 # st.set_page_config must be the first Streamlit command in the script. It
@@ -62,7 +67,24 @@ st.set_page_config(
 # this, Streamlit would re-read the CSV from disk on every single click.
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    return pd.read_csv("employee_productivity_dataset.csv")
+    df = pd.read_csv("employee_productivity_dataset.csv")
+
+    # Guard against the CSV's Job_Level values silently drifting away from
+    # JOB_LEVEL_ORDER above (e.g. if someone edits generate_dataset.py's
+    # `job_levels` list later and forgets to update this file). Without
+    # this check, a level missing from JOB_LEVEL_ORDER just can't be
+    # selected in the dropdown, and a level in JOB_LEVEL_ORDER but not in
+    # the data would silently encode as all-zero dummy columns — either
+    # way, wrong predictions with no error. Better to fail loudly here.
+    actual_levels = set(df["Job_Level"].unique())
+    if actual_levels != set(JOB_LEVEL_ORDER):
+        raise ValueError(
+            "Job_Level values in employee_productivity_dataset.csv "
+            f"({sorted(actual_levels)}) don't match JOB_LEVEL_ORDER in "
+            f"app.py ({JOB_LEVEL_ORDER}). Update JOB_LEVEL_ORDER to match."
+        )
+
+    return df
 
 
 # --- Step 2: Train the model (cached) -------------------------------------------
@@ -197,10 +219,7 @@ with predict_tab:
         department = st.selectbox(
             "Department", sorted(df["Department"].unique()), index=0
         )
-        job_level = st.selectbox(
-            "Job Level",
-            ["Junior", "Mid", "Senior", "Lead", "Manager"],
-        )
+        job_level = st.selectbox("Job Level", JOB_LEVEL_ORDER)
 
         # For every numeric slider below, we pull the real minimum/maximum
         # seen in the dataset (df[col].min() / .max()) so users can't drag
@@ -277,11 +296,20 @@ with predict_tab:
     # script, so this next block always reflects the form's current state
     # — there's no separate "Predict" button to click.
     input_row = build_input_row(user_inputs, model_columns)
-    prediction = float(model.predict(input_row)[0])
+    raw_prediction = float(model.predict(input_row)[0])
+
+    # The training target was clipped to a 0-100 scale (see
+    # generate_dataset.py), but a raw linear regression formula has no idea
+    # a "score" is supposed to stay in that range — with a favorable-enough
+    # combination of slider values it can predict above 100 or below 0. We
+    # clip the DISPLAYED prediction the same way the training data was
+    # clipped, so the headline number always stays on the scale the app
+    # advertises ("... / 100").
+    prediction = max(0.0, min(100.0, raw_prediction))
 
     # What fraction of all employees in the dataset score at or below this
-    # prediction? This turns a raw number ("72.4") into relatable context
-    # ("better than 65% of employees").
+    # (clipped) prediction? This turns a raw number ("72.4") into relatable
+    # context ("better than 65% of employees").
     percentile = float((df[TARGET_COLUMN] <= prediction).mean() * 100)
 
     # --- Right column: predicted score, population context, contribution ------
@@ -298,6 +326,12 @@ with predict_tab:
         st.write(
             f"This is higher than **{percentile:.0f}%** of employees in the dataset."
         )
+        if raw_prediction != prediction:
+            st.caption(
+                f"Note: the model's raw formula output {raw_prediction:.1f} for this "
+                "combination of inputs; it's clipped to 0-100 here since that's the "
+                "scale the training data uses."
+            )
 
         # --- Population context histogram ---------------------------------
         # A histogram of every employee's real productivity score, with a
