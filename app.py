@@ -18,9 +18,9 @@ It will open a browser tab automatically.
 
 # --- Imports -----------------------------------------------------------------
 
-import streamlit as st                       # the web app framework itself
-import pandas as pd                            # tables (DataFrames)
-import plotly.graph_objects as go               # interactive charts
+import streamlit as st  # the web app framework itself
+import pandas as pd  # tables (DataFrames)
+import plotly.graph_objects as go  # interactive charts
 
 # The actual "load the data" and "train the model" logic lives in
 # model_core.py, shared with train_model.py (the plain terminal script), so
@@ -33,7 +33,6 @@ import plotly.graph_objects as go               # interactive charts
 #   - pretty_label / build_input_row, small helpers used by the Predict tab
 from model_core import (
     NUMERIC_FEATURES,
-    CATEGORICAL_FEATURES,
     TARGET_COLUMN,
     JOB_LEVEL_ORDER,
     load_data as _load_data,
@@ -62,12 +61,12 @@ PALETTE_LIGHT = {
     "text_muted": "#898781",
     "grid": "#e1e0d9",
     "axis": "#c3c2b7",
-    "series": "#2a78d6",    # a single data series (histogram bars, scatter dots)
+    "series": "#2a78d6",  # a single data series (histogram bars, scatter dots)
     "positive": "#2a78d6",  # a value that pushes the score up
     "negative": "#e34948",  # a value that pushes the score down
-    "neutral": "#52514e",   # a running total — neither positive nor negative
-    "guide": "#52514e",     # a passive reference line to compare data against
-    "highlight": "#e34948", # an active marker calling out one specific value
+    "neutral": "#52514e",  # a running total — neither positive nor negative
+    "guide": "#52514e",  # a passive reference line to compare data against
+    "highlight": "#e34948",  # an active marker calling out one specific value
 }
 PALETTE_DARK = {
     "surface": "#1a1a19",
@@ -117,10 +116,10 @@ def style_chart(
     reference lines, axis ranges) are still set by each caller beforehand.
     """
 
-    # Plotly's frontend renders a literal "undefined" title if `title` (or
-    # an axis `title`) is explicitly set to None rather than left out of the
-    # update entirely — so build the layout kwargs and only include a title
-    # key at all when there's real text for it.
+    # A `title` key is only added when there's real text for it: Plotly's
+    # title needs to be left out of the update entirely for "no title" —
+    # an explicit None isn't the same thing to the frontend as the key
+    # being absent. Same reasoning applies to each axis title below.
     layout_kwargs = dict(
         height=height,
         margin=dict(t=margin_t, b=margin_b, l=10, r=10),
@@ -143,7 +142,9 @@ def style_chart(
         ),
     )
     if title:
-        layout_kwargs["title"] = dict(text=title, font=dict(size=16, color=palette["text_primary"]))
+        layout_kwargs["title"] = dict(
+            text=title, font=dict(size=16, color=palette["text_primary"])
+        )
     fig.update_layout(**layout_kwargs)
 
     def axis_kwargs(text: str | None) -> dict:
@@ -157,7 +158,9 @@ def style_chart(
             linecolor=palette["axis"],
         )
         if text:
-            kwargs["title"] = dict(text=text, font=dict(color=palette["text_secondary"]))
+            kwargs["title"] = dict(
+                text=text, font=dict(color=palette["text_secondary"])
+            )
         return kwargs
 
     fig.update_xaxes(**axis_kwargs(xaxis_title))
@@ -179,6 +182,7 @@ st.set_page_config(
 
 # --- Step 1: Load the dataset (cached) -----------------------------------------
 
+
 # The @st.cache_data decorator above a function tells Streamlit: "run this
 # function once, remember what it returned, and just hand back that saved
 # result on future calls instead of re-running the whole function." Without
@@ -191,6 +195,7 @@ def load_data() -> pd.DataFrame:
 
 
 # --- Step 2: Train the model (cached) -------------------------------------------
+
 
 # @st.cache_resource is the same idea as @st.cache_data, but meant for
 # objects that aren't plain data (like a trained model). The actual
@@ -289,10 +294,15 @@ with predict_tab:
             "Monthly Working Hours", "Monthly_Working_Hours", step=1.0
         )
         projects_completed = numeric_input_with_range_hint(
-            "Projects Completed (this month)", "Projects_Completed", step=1, integer=True
+            "Projects Completed (this month)",
+            "Projects_Completed",
+            step=1,
+            integer=True,
         )
         avg_task_time = numeric_input_with_range_hint(
-            "Average Task Completion Time (hours)", "Average_Task_Completion_Time", step=0.1
+            "Average Task Completion Time (hours)",
+            "Average_Task_Completion_Time",
+            step=0.1,
         )
         absence_days = numeric_input_with_range_hint(
             "Absence Days (this month)", "Absence_Days", step=1, integer=True
@@ -367,12 +377,11 @@ with predict_tab:
         hist_fig.add_trace(
             go.Histogram(
                 x=df[TARGET_COLUMN],
-                # Pin the bins to the score's actual 0-100 scale instead of
-                # leaving Plotly to pick "nice" bin edges on its own — with
-                # nbinsx alone, Plotly can round to a bin width/offset (e.g.
-                # 97.5-102.49) that overshoots past 100, implying scores
-                # that can't actually occur (the target is clipped to
-                # 0-100 in generate_dataset.py).
+                # Bins are pinned explicitly to the score's real 0-100
+                # range, rather than left to Plotly's automatic "nice
+                # number" bin sizing, so every bin edge stays inside the
+                # range a score can actually take (the target is clipped
+                # to 0-100 in generate_dataset.py).
                 xbins=dict(start=0, end=100, size=2.5),
                 name="All employees",
                 marker_color=palette["series"],
@@ -402,10 +411,10 @@ with predict_tab:
             yaxis_title="Number of employees",
             height=320,
         )
-        # The modebar (zoom/pan/export icons) floats over the top-right of
-        # the chart; in this narrow column the title wraps right into it,
-        # so it's hidden rather than fixed with fragile margin tweaks.
-        st.plotly_chart(hist_fig, width='stretch', config={"displayModeBar": False})
+        # The modebar (zoom/pan/export icons) isn't useful on a read-only
+        # dashboard chart like this one, so it's hidden — one less thing
+        # competing with the title for space at the top of the chart.
+        st.plotly_chart(hist_fig, width="stretch", config={"displayModeBar": False})
 
         # --- Contribution breakdown (waterfall chart) ----------------------
         # A linear regression prediction is always:
@@ -416,7 +425,9 @@ with predict_tab:
         # ML models where this kind of breakdown isn't so straightforward.
         labels = ["Baseline"]
         values = [model.intercept_]
-        measures = ["absolute"]  # "absolute" = draw this bar from 0, not stacked on the previous one
+        measures = [
+            "absolute"
+        ]  # "absolute" = draw this bar from 0, not stacked on the previous one
 
         # Always show every numeric feature's contribution, even if it's
         # small, since every numeric feature always has some value.
@@ -424,7 +435,9 @@ with predict_tab:
             contribution = coefficients[col] * input_row.iloc[0][col]
             labels.append(pretty_label(col))
             values.append(contribution)
-            measures.append("relative")  # "relative" = stack on top of the running total so far
+            measures.append(
+                "relative"
+            )  # "relative" = stack on top of the running total so far
 
         # For the one-hot (Department_*, Job_Level_*) columns, only show a
         # bar when that column is actually "on" (equal to 1) for this
@@ -436,16 +449,13 @@ with predict_tab:
                 values.append(coefficients[col])
                 measures.append("relative")
 
-        # The bar itself is drawn correctly without our help: Plotly computes
-        # a "total" measure's height as the running sum of everything before
-        # it (baseline + every contribution above), ignoring whatever y-value
-        # we give it here — 0 is just a required placeholder. But our own
-        # on-bar text labels below are plain string formatting, not magic,
-        # so if we labeled this bar from that same placeholder it would
-        # print "0.0" while the bar visibly reaches the real total. Compute
-        # the true total (== raw_prediction, since it's baseline + every
-        # contribution the model actually applied) so the label matches
-        # what the bar shows.
+        # A "total" measure's bar height is computed by Plotly automatically
+        # — the running sum of everything before it (baseline plus every
+        # contribution above) — regardless of the y-value we give it; 0 is
+        # just a required placeholder. The on-bar text label has no such
+        # magic, so the running total is computed here directly (the same
+        # number as raw_prediction: baseline plus every contribution the
+        # model actually applied) and used to label that bar.
         predicted_total = sum(values)
         labels.append("Predicted score")
         values.append(0)
@@ -462,8 +472,10 @@ with predict_tab:
                 decreasing={"marker": {"color": palette["negative"]}},
                 totals={"marker": {"color": palette["neutral"]}},
                 text=[
-                    f"{v:.1f}" if lbl == "Baseline"
-                    else f"{predicted_total:.1f}" if lbl == "Predicted score"
+                    f"{v:.1f}"
+                    if lbl == "Baseline"
+                    else f"{predicted_total:.1f}"
+                    if lbl == "Predicted score"
                     else f"{v:+.1f}"
                     for lbl, v in zip(labels, values)
                 ],
@@ -503,7 +515,9 @@ with predict_tab:
             legend_y=-0.62,
             showlegend=True,
         )
-        st.plotly_chart(waterfall_fig, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(
+            waterfall_fig, width="stretch", config={"displayModeBar": False}
+        )
 
 
 # =================================================================================
@@ -581,7 +595,7 @@ with performance_tab:
             yaxis_title="Predicted score",
             height=400,
         )
-        st.plotly_chart(scatter_fig, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(scatter_fig, width="stretch", config={"displayModeBar": False})
 
     # --- Residuals plot -----------------------------------------------------------
     with chart_right:
@@ -625,7 +639,7 @@ with performance_tab:
             yaxis_title="Residual",
             height=400,
         )
-        st.plotly_chart(resid_fig, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(resid_fig, width="stretch", config={"displayModeBar": False})
 
     # --- Learned coefficients bar chart --------------------------------------------
     st.subheader("What the model learned")
@@ -676,4 +690,4 @@ with performance_tab:
         margin_b=50,
         showlegend=True,
     )
-    st.plotly_chart(coef_fig, width='stretch', config={"displayModeBar": False})
+    st.plotly_chart(coef_fig, width="stretch", config={"displayModeBar": False})
