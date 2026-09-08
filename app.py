@@ -22,30 +22,25 @@ import streamlit as st                       # the web app framework itself
 import pandas as pd                            # tables (DataFrames)
 import plotly.graph_objects as go               # interactive charts
 
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, mean_absolute_error, root_mean_squared_error
-
-# The raw column names for each kind of feature, so we don't repeat these
-# lists throughout the file. Keeping them in one place means if you rename
-# a column in the CSV, you only have to update it here.
-NUMERIC_FEATURES = [
-    "Years_of_Experience",
-    "Training_Hours",
-    "Monthly_Working_Hours",
-    "Projects_Completed",
-    "Average_Task_Completion_Time",
-    "Absence_Days",
-    "Engagement_Score",
-]
-CATEGORICAL_FEATURES = ["Department", "Job_Level"]
-TARGET_COLUMN = "Monthly_Productivity_Score"
-
-# The five job levels IN SENIORITY ORDER (not alphabetical — alphabetical
-# would put "Lead" before "Junior"). This must match the `job_levels` list
-# in generate_dataset.py. We check that match at load time below (see
-# load_data) so a mismatch fails loudly instead of silently mispredicting.
-JOB_LEVEL_ORDER = ["Junior", "Mid", "Senior", "Lead", "Manager"]
+# The actual "load the data" and "train the model" logic lives in
+# model_core.py, shared with train_model.py (the plain terminal script), so
+# both always compute things exactly the same way. We import:
+#   - the column-name constants, so this file doesn't need its own copies
+#   - load_data / train_model, the functions that do the real work (renamed
+#     with a leading underscore here since we wrap each in a Streamlit
+#     cache decorator below, under the SAME names, for the rest of this
+#     file to call)
+#   - pretty_label / build_input_row, small helpers used by the Predict tab
+from model_core import (
+    NUMERIC_FEATURES,
+    CATEGORICAL_FEATURES,
+    TARGET_COLUMN,
+    JOB_LEVEL_ORDER,
+    load_data as _load_data,
+    train_model as _train_model,
+    pretty_label,
+    build_input_row,
+)
 
 # --- Page setup ----------------------------------------------------------------
 
@@ -65,127 +60,24 @@ st.set_page_config(
 # function once, remember what it returned, and just hand back that saved
 # result on future calls instead of re-running the whole function." Without
 # this, Streamlit would re-read the CSV from disk on every single click.
+# The actual reading + validation happens in model_core.load_data(); this
+# wrapper just adds Streamlit's caching on top of it.
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    df = pd.read_csv("employee_productivity_dataset.csv")
-
-    # Guard against the CSV's Job_Level values silently drifting away from
-    # JOB_LEVEL_ORDER above (e.g. if someone edits generate_dataset.py's
-    # `job_levels` list later and forgets to update this file). Without
-    # this check, a level missing from JOB_LEVEL_ORDER just can't be
-    # selected in the dropdown, and a level in JOB_LEVEL_ORDER but not in
-    # the data would silently encode as all-zero dummy columns — either
-    # way, wrong predictions with no error. Better to fail loudly here.
-    actual_levels = set(df["Job_Level"].unique())
-    if actual_levels != set(JOB_LEVEL_ORDER):
-        raise ValueError(
-            "Job_Level values in employee_productivity_dataset.csv "
-            f"({sorted(actual_levels)}) don't match JOB_LEVEL_ORDER in "
-            f"app.py ({JOB_LEVEL_ORDER}). Update JOB_LEVEL_ORDER to match."
-        )
-
-    return df
+    return _load_data()
 
 
 # --- Step 2: Train the model (cached) -------------------------------------------
 
 # @st.cache_resource is the same idea as @st.cache_data, but meant for
-# objects that aren't plain data (like a trained model). We do the SAME
-# steps here as in train_model.py: split into features/target, one-hot
-# encode the text columns, split into train/test, fit a LinearRegression,
-# and score it. We return everything the rest of the app will need so we
-# only ever train the model once per app session.
+# objects that aren't plain data (like a trained model). The actual
+# encoding/splitting/fitting/scoring happens in model_core.train_model() —
+# the exact same function train_model.py calls — so this app's model can
+# never quietly diverge from what that script reports. This wrapper just
+# adds Streamlit's caching so we only ever train once per app session.
 @st.cache_resource
 def train_model(df: pd.DataFrame):
-    # Target column: what we're predicting.
-    y = df[TARGET_COLUMN]
-
-    # Feature columns: everything the model is allowed to look at.
-    # Employee_ID is dropped because it's just a made-up label, not a
-    # real predictor.
-    X = df.drop(columns=[TARGET_COLUMN, "Employee_ID"])
-
-    # Turn Department/Job_Level text into 0/1 dummy columns so the model
-    # (pure math) can use them. drop_first=True drops one category per
-    # column to avoid redundant/duplicate information.
-    X = pd.get_dummies(X, columns=CATEGORICAL_FEATURES, drop_first=True)
-
-    # Remember the exact list and order of encoded column names. Later,
-    # when we build a single row from the user's form inputs, we'll line
-    # it up against this exact list (see build_input_row below) so the
-    # model always receives columns in the order it expects.
-    model_columns = X.columns.tolist()
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=1
-    )
-
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-
-    metrics = {
-        "r2": r2_score(y_test, y_pred),
-        "mae": mean_absolute_error(y_test, y_pred),
-        "rmse": root_mean_squared_error(y_test, y_pred),
-        "n_train": len(X_train),
-        "n_test": len(X_test),
-    }
-
-    # A pandas Series pairing each encoded column name with its learned
-    # weight, so other parts of the app can look up "how much does this
-    # feature push the score up or down per unit?"
-    coefficients = pd.Series(model.coef_, index=model_columns)
-
-    return model, model_columns, coefficients, X_test, y_test, y_pred, metrics
-
-
-def pretty_label(column_name: str) -> str:
-    """
-    Turns a raw column name like "Department_Engineering" or
-    "Years_of_Experience" into a friendlier label for display, like
-    "Department: Engineering" or "Years Of Experience". This is purely
-    cosmetic — it doesn't change any numbers, just how they're labeled
-    in charts.
-    """
-    for cat in CATEGORICAL_FEATURES:
-        prefix = cat + "_"
-        if column_name.startswith(prefix):
-            # e.g. "Department_Engineering" -> "Department: Engineering"
-            return f"{cat.replace('_', ' ')}: {column_name[len(prefix):].replace('_', ' ')}"
-    # Plain numeric feature, e.g. "Years_of_Experience" -> "Years Of Experience"
-    return column_name.replace("_", " ")
-
-
-def build_input_row(user_inputs: dict, model_columns: list) -> pd.DataFrame:
-    """
-    Takes the raw values a user picked in the form (a plain dictionary,
-    e.g. {"Department": "Engineering", "Years_of_Experience": 5.0, ...})
-    and turns it into a ONE-ROW table that has exactly the same columns,
-    in exactly the same order, as the data the model was trained on
-    (model_columns). This is required because a trained scikit-learn
-    model always expects the same columns it saw during training.
-    """
-    # Wrap the single dictionary of inputs in a list so pandas builds a
-    # DataFrame with exactly one row.
-    row = pd.DataFrame([user_inputs])
-
-    # One-hot encode the same two text columns the same way training did.
-    row = pd.get_dummies(row, columns=CATEGORICAL_FEATURES)
-
-    # .reindex(columns=model_columns, fill_value=0) does two jobs at once:
-    #   1. Adds back any dummy columns that this particular row doesn't
-    #      need (e.g. if the user picked "Engineering", there's no
-    #      "Department_Sales" column in `row` yet — reindex adds it and
-    #      fills it with 0, exactly like a real Sales=0/Engineering=1 row).
-    #   2. Puts every column in the exact order model_columns expects.
-    # Without this step, a single row's columns could end up in a
-    # different order than what the model was trained on, which would
-    # silently produce wrong predictions.
-    row = row.reindex(columns=model_columns, fill_value=0)
-
-    return row
+    return _train_model(df)
 
 
 # --- Load data and model once, then build the page -----------------------------
