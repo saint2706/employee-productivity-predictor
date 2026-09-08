@@ -436,8 +436,19 @@ with predict_tab:
                 values.append(coefficients[col])
                 measures.append("relative")
 
+        # The bar itself is drawn correctly without our help: Plotly computes
+        # a "total" measure's height as the running sum of everything before
+        # it (baseline + every contribution above), ignoring whatever y-value
+        # we give it here — 0 is just a required placeholder. But our own
+        # on-bar text labels below are plain string formatting, not magic,
+        # so if we labeled this bar from that same placeholder it would
+        # print "0.0" while the bar visibly reaches the real total. Compute
+        # the true total (== raw_prediction, since it's baseline + every
+        # contribution the model actually applied) so the label matches
+        # what the bar shows.
+        predicted_total = sum(values)
         labels.append("Predicted score")
-        values.append(0)  # ignored by Plotly for "total" bars — it sums everything automatically
+        values.append(0)
         measures.append("total")
 
         waterfall_fig = go.Figure()
@@ -450,8 +461,12 @@ with predict_tab:
                 increasing={"marker": {"color": palette["positive"]}},
                 decreasing={"marker": {"color": palette["negative"]}},
                 totals={"marker": {"color": palette["neutral"]}},
-                text=[f"{v:+.1f}" if lbl not in ("Baseline", "Predicted score") else f"{v:.1f}"
-                      for lbl, v in zip(labels, values)],
+                text=[
+                    f"{v:.1f}" if lbl == "Baseline"
+                    else f"{predicted_total:.1f}" if lbl == "Predicted score"
+                    else f"{v:+.1f}"
+                    for lbl, v in zip(labels, values)
+                ],
                 textposition="outside",
                 textfont=dict(color=palette["text_primary"]),
                 showlegend=False,
