@@ -42,7 +42,15 @@ N = 5000
 
 # This is a plain Python list of the possible department names. Each
 # simulated employee will be assigned to exactly one of these.
-departments = ["Sales", "Engineering", "HR", "Marketing", "Finance", "Operations", "Customer_Support"]
+departments = [
+    "Sales",
+    "Engineering",
+    "HR",
+    "Marketing",
+    "Finance",
+    "Operations",
+    "Customer_Support",
+]
 
 # dept_weights controls how LIKELY each department is to be picked, in the
 # same order as the "departments" list above (so 0.18 is the chance of
@@ -59,8 +67,13 @@ dept_weights = [0.18, 0.22, 0.10, 0.14, 0.12, 0.14, 0.10]
 # whatever "productivity" measure the company uses, for reasons unrelated
 # to any individual's skill (e.g. different tools, different workflows).
 dept_productivity_offset = {
-    "Sales": -1.0, "Engineering": 3.5, "HR": -0.5, "Marketing": 0.5,
-    "Finance": 1.5, "Operations": -1.5, "Customer_Support": -2.0,
+    "Sales": -1.0,
+    "Engineering": 3.5,
+    "HR": -0.5,
+    "Marketing": 0.5,
+    "Finance": 1.5,
+    "Operations": -1.5,
+    "Customer_Support": -2.0,
 }
 
 # --- Job level setup ---------------------------------------------------------
@@ -85,7 +98,13 @@ job_level_weights = [0.30, 0.30, 0.20, 0.12, 0.08]
 # level. More senior employees get a bigger bonus added to their eventual
 # productivity score, on the (realistic) assumption that seniority tends to
 # come with more efficient, higher-output work.
-job_level_productivity_offset = {"Junior": 0, "Mid": 3, "Senior": 6, "Lead": 9, "Manager": 11}
+job_level_productivity_offset = {
+    "Junior": 0,
+    "Mid": 3,
+    "Senior": 6,
+    "Lead": 9,
+    "Manager": 11,
+}
 
 # --- Years of experience setup ----------------------------------------------
 
@@ -203,8 +222,13 @@ Monthly_Working_Hours = np.clip(Monthly_Working_Hours, 130, 215).round(1)
 # result) typical for each department, rather than an offset added to
 # something else.
 dept_engagement_base = {
-    "Sales": 62, "Engineering": 70, "HR": 66, "Marketing": 64,
-    "Finance": 63, "Operations": 60, "Customer_Support": 58,
+    "Sales": 62,
+    "Engineering": 70,
+    "HR": 66,
+    "Marketing": 64,
+    "Finance": 63,
+    "Operations": 60,
+    "Customer_Support": 58,
 }
 
 # For every employee, look up their department's base engagement score
@@ -213,7 +237,9 @@ dept_engagement_base = {
 # (rng.normal(0, 12, N) draws N random "noise" values averaging 0 with a
 # spread of 12 points) to represent that people in the same department
 # still don't all feel equally engaged.
-Engagement_Score = np.array([dept_engagement_base[d] for d in Department]) + rng.normal(0, 12, N)
+Engagement_Score = np.array([dept_engagement_base[d] for d in Department]) + rng.normal(
+    0, 12, N
+)
 
 # Engagement scores don't make sense below 5 or above 100, so we clip them
 # into that range, then round to 1 decimal place.
@@ -299,17 +325,21 @@ noise = rng.normal(0, 4.5, N)
 # is added together. This is precisely the kind of relationship a linear
 # regression model is designed to learn back out from the data.
 Monthly_Productivity_Score = (
-    32                                          # baseline score everyone starts with
-    + 0.55 * Years_of_Experience                # more experience -> higher score
-    + 0.10 * Training_Hours                     # more training -> slightly higher score
-    + 0.04 * (Monthly_Working_Hours - 175)      # working more than the 175hr norm -> slightly higher score
-    + 1.6 * Projects_Completed                  # more finished projects -> higher score
-    - 1.1 * Average_Task_Completion_Time        # SLOWER task completion -> lower score (that's why it's subtracted)
-    - 0.55 * Absence_Days                       # more absences -> lower score (also subtracted)
-    + 0.30 * Engagement_Score                   # more engaged -> higher score
-    + dept_offset                               # each department's fixed bonus/penalty
-    + level_offset                              # each job level's fixed bonus
-    + noise                                     # random unexplained variation
+    32  # baseline score everyone starts with
+    + 0.55 * Years_of_Experience  # more experience -> higher score
+    + 0.10 * Training_Hours  # more training -> slightly higher score
+    + 0.04
+    * (
+        Monthly_Working_Hours - 175
+    )  # working more than the 175hr norm -> slightly higher score
+    + 1.6 * Projects_Completed  # more finished projects -> higher score
+    - 1.1
+    * Average_Task_Completion_Time  # SLOWER task completion -> lower score (that's why it's subtracted)
+    - 0.55 * Absence_Days  # more absences -> lower score (also subtracted)
+    + 0.30 * Engagement_Score  # more engaged -> higher score
+    + dept_offset  # each department's fixed bonus/penalty
+    + level_offset  # each job level's fixed bonus
+    + noise  # random unexplained variation
 )
 
 # Productivity scores don't make sense below 0 or above 100 on our chosen
@@ -322,19 +352,21 @@ Monthly_Productivity_Score = np.clip(Monthly_Productivity_Score, 0, 100).round(2
 # name, and each value (one of our arrays/lists built above) becomes that
 # column's data, matched up row-by-row (row 0 of every column belongs to
 # the same simulated employee, row 1 to the next employee, and so on).
-df = pd.DataFrame({
-    "Employee_ID": Employee_ID,
-    "Department": Department,
-    "Job_Level": Job_Level,
-    "Years_of_Experience": Years_of_Experience,
-    "Training_Hours": Training_Hours,
-    "Monthly_Working_Hours": Monthly_Working_Hours,
-    "Projects_Completed": Projects_Completed,
-    "Average_Task_Completion_Time": Average_Task_Completion_Time,
-    "Absence_Days": Absence_Days,
-    "Engagement_Score": Engagement_Score,
-    "Monthly_Productivity_Score": Monthly_Productivity_Score,
-})
+df = pd.DataFrame(
+    {
+        "Employee_ID": Employee_ID,
+        "Department": Department,
+        "Job_Level": Job_Level,
+        "Years_of_Experience": Years_of_Experience,
+        "Training_Hours": Training_Hours,
+        "Monthly_Working_Hours": Monthly_Working_Hours,
+        "Projects_Completed": Projects_Completed,
+        "Average_Task_Completion_Time": Average_Task_Completion_Time,
+        "Absence_Days": Absence_Days,
+        "Engagement_Score": Engagement_Score,
+        "Monthly_Productivity_Score": Monthly_Productivity_Score,
+    }
+)
 
 # --- Save the table to a file and print a quick summary -----------------------
 
@@ -363,4 +395,4 @@ print(df.isna().sum().sum(), "missing values")
 # columns (Department, Job_Level, Employee_ID), not just the numeric ones.
 # .T "transposes" the result (swaps rows and columns) purely so it's easier
 # to read when printed to the terminal.
-print(df.describe(include='all').T)
+print(df.describe(include="all").T)

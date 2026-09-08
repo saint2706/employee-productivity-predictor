@@ -61,7 +61,9 @@ print(f"\nLearned baseline (intercept): {round(model.intercept_, 3)}")
 # feature tends to push productivity UP; negative means it pushes
 # productivity DOWN. We sort from most positive to most negative so the
 # strongest effects are easiest to spot.
-print("\nLearned weight (coefficient) for each feature, sorted strongest-positive to strongest-negative:")
+print(
+    "\nLearned weight (coefficient) for each feature, sorted strongest-positive to strongest-negative:"
+)
 print(coefficients.sort_values(ascending=False).round(3))
 
 # --- Step 4: Sanity-check a few individual predictions --------------------------
@@ -69,9 +71,11 @@ print(coefficients.sort_values(ascending=False).round(3))
 # Grab the first 5 rows of the test set and show the model's guess next to
 # the true answer, just so we can visually see how close it gets on actual
 # examples (rather than only looking at the summary scores above).
-comparison = pd.DataFrame({
-    "Actual": y_test.values[:5],
-    "Predicted": np.round(y_pred[:5], 2),
-})
+comparison = pd.DataFrame(
+    {
+        "Actual": y_test.values[:5],
+        "Predicted": np.round(y_pred[:5], 2),
+    }
+)
 print("\nA few real vs. predicted examples from the test set:")
 print(comparison)

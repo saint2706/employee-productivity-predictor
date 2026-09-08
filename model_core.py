@@ -61,6 +61,7 @@ JOB_LEVEL_ORDER = ["Junior", "Mid", "Senior", "Lead", "Manager"]
 
 # --- Step 1: Load the dataset ---------------------------------------------------
 
+
 def load_data(path: str = DATA_PATH) -> pd.DataFrame:
     """
     Reads the CSV file into a pandas table (DataFrame) and sanity-checks
@@ -89,6 +90,7 @@ def load_data(path: str = DATA_PATH) -> pd.DataFrame:
 
 
 # --- Step 2-6: Train a linear regression model on that data ---------------------
+
 
 def train_model(df: pd.DataFrame, test_size: float = 0.2, random_state: int = 1):
     """
@@ -166,6 +168,7 @@ def train_model(df: pd.DataFrame, test_size: float = 0.2, random_state: int = 1)
 
 # --- Helpers for turning a single set of user-picked inputs into a prediction ---
 
+
 def pretty_label(column_name: str) -> str:
     """
     Turns a raw encoded column name like "Department_Engineering" or
@@ -177,7 +180,7 @@ def pretty_label(column_name: str) -> str:
         prefix = cat + "_"
         if column_name.startswith(prefix):
             # e.g. "Department_Engineering" -> "Department: Engineering"
-            return f"{cat.replace('_', ' ')}: {column_name[len(prefix):].replace('_', ' ')}"
+            return f"{cat.replace('_', ' ')}: {column_name[len(prefix) :].replace('_', ' ')}"
     # Plain numeric feature, e.g. "Years_of_Experience" -> "Years Of Experience"
     return column_name.replace("_", " ")
 

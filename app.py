@@ -18,9 +18,9 @@ It will open a browser tab automatically.
 
 # --- Imports -----------------------------------------------------------------
 
-import streamlit as st                       # the web app framework itself
-import pandas as pd                            # tables (DataFrames)
-import plotly.graph_objects as go               # interactive charts
+import streamlit as st  # the web app framework itself
+import pandas as pd  # tables (DataFrames)
+import plotly.graph_objects as go  # interactive charts
 
 # The actual "load the data" and "train the model" logic lives in
 # model_core.py, shared with train_model.py (the plain terminal script), so
@@ -33,7 +33,6 @@ import plotly.graph_objects as go               # interactive charts
 #   - pretty_label / build_input_row, small helpers used by the Predict tab
 from model_core import (
     NUMERIC_FEATURES,
-    CATEGORICAL_FEATURES,
     TARGET_COLUMN,
     JOB_LEVEL_ORDER,
     load_data as _load_data,
@@ -41,6 +40,133 @@ from model_core import (
     pretty_label,
     build_input_row,
 )
+
+# --- Chart color palette ---------------------------------------------------------
+#
+# One small, fixed set of roles is reused across every chart below instead of
+# each chart picking its own colors ad hoc. That matters for two reasons:
+#   - a "positive contribution" is always the same blue and a "negative
+#     contribution" is always the same red, whether you're looking at the
+#     waterfall chart or the coefficients chart — so the two never disagree
+#   - the hues are colorblind-safe (checked with a Delta-E-in-OKLab palette
+#     validator, not just eyeballed) and keep enough contrast against the
+#     surface to read clearly
+# Both a light and a dark version are defined so charts still look
+# intentional — not a jarring white box — if someone views this app in
+# Streamlit's dark theme.
+PALETTE_LIGHT = {
+    "surface": "#fcfcfb",
+    "text_primary": "#0b0b0b",
+    "text_secondary": "#52514e",
+    "text_muted": "#898781",
+    "grid": "#e1e0d9",
+    "axis": "#c3c2b7",
+    "series": "#2a78d6",  # a single data series (histogram bars, scatter dots)
+    "positive": "#2a78d6",  # a value that pushes the score up
+    "negative": "#e34948",  # a value that pushes the score down
+    "neutral": "#52514e",  # a running total — neither positive nor negative
+    "guide": "#52514e",  # a passive reference line to compare data against
+    "highlight": "#e34948",  # an active marker calling out one specific value
+}
+PALETTE_DARK = {
+    "surface": "#1a1a19",
+    "text_primary": "#ffffff",
+    "text_secondary": "#c3c2b7",
+    "text_muted": "#898781",
+    "grid": "#2c2c2a",
+    "axis": "#383835",
+    "series": "#3987e5",
+    "positive": "#3987e5",
+    "negative": "#e66767",
+    "neutral": "#c3c2b7",
+    "guide": "#c3c2b7",
+    "highlight": "#e66767",
+}
+
+
+def active_palette() -> dict:
+    """
+    Picks the light or dark chart palette to match Streamlit's current
+    theme, so charts don't render as a jarring white box in dark mode.
+    st.context.theme.type is None when the theme can't be determined
+    (falls back to light).
+    """
+    theme_type = getattr(st.context.theme, "type", None)
+    return PALETTE_DARK if theme_type == "dark" else PALETTE_LIGHT
+
+
+def style_chart(
+    fig: go.Figure,
+    palette: dict,
+    *,
+    title: str | None,
+    height: int,
+    margin_t: int = 50,
+    margin_b: int = 10,
+    legend_y: float = -0.22,
+    xaxis_title: str | None = None,
+    yaxis_title: str | None = None,
+    showlegend: bool = False,
+) -> go.Figure:
+    """
+    Applies the same chrome to every chart on the page — background, fonts,
+    gridlines, legend placement, and hover box colors, all pulled from
+    `palette` — so every chart reads as part of one system and moves
+    together when Streamlit's theme changes. Chart-specific bits (traces,
+    reference lines, axis ranges) are still set by each caller beforehand.
+    """
+
+    # A `title` key is only added when there's real text for it: Plotly's
+    # title needs to be left out of the update entirely for "no title" —
+    # an explicit None isn't the same thing to the frontend as the key
+    # being absent. Same reasoning applies to each axis title below.
+    layout_kwargs = dict(
+        height=height,
+        margin=dict(t=margin_t, b=margin_b, l=10, r=10),
+        paper_bgcolor=palette["surface"],
+        plot_bgcolor=palette["surface"],
+        font=dict(color=palette["text_secondary"], size=13),
+        showlegend=showlegend,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=legend_y,
+            xanchor="center",
+            x=0.5,
+            font=dict(color=palette["text_secondary"], size=12),
+        ),
+        hoverlabel=dict(
+            bgcolor=palette["surface"],
+            bordercolor=palette["axis"],
+            font=dict(color=palette["text_primary"]),
+        ),
+    )
+    if title:
+        layout_kwargs["title"] = dict(
+            text=title, font=dict(size=16, color=palette["text_primary"])
+        )
+    fig.update_layout(**layout_kwargs)
+
+    def axis_kwargs(text: str | None) -> dict:
+        kwargs = dict(
+            tickfont=dict(color=palette["text_muted"]),
+            gridcolor=palette["grid"],
+            gridwidth=1,
+            griddash="solid",
+            zeroline=False,
+            showline=True,
+            linecolor=palette["axis"],
+        )
+        if text:
+            kwargs["title"] = dict(
+                text=text, font=dict(color=palette["text_secondary"])
+            )
+        return kwargs
+
+    fig.update_xaxes(**axis_kwargs(xaxis_title))
+    fig.update_yaxes(**axis_kwargs(yaxis_title))
+    return fig
+
 
 # --- Page setup ----------------------------------------------------------------
 
@@ -56,6 +182,7 @@ st.set_page_config(
 
 # --- Step 1: Load the dataset (cached) -----------------------------------------
 
+
 # The @st.cache_data decorator above a function tells Streamlit: "run this
 # function once, remember what it returned, and just hand back that saved
 # result on future calls instead of re-running the whole function." Without
@@ -68,6 +195,7 @@ def load_data() -> pd.DataFrame:
 
 
 # --- Step 2: Train the model (cached) -------------------------------------------
+
 
 # @st.cache_resource is the same idea as @st.cache_data, but meant for
 # objects that aren't plain data (like a trained model). The actual
@@ -166,10 +294,15 @@ with predict_tab:
             "Monthly Working Hours", "Monthly_Working_Hours", step=1.0
         )
         projects_completed = numeric_input_with_range_hint(
-            "Projects Completed (this month)", "Projects_Completed", step=1, integer=True
+            "Projects Completed (this month)",
+            "Projects_Completed",
+            step=1,
+            integer=True,
         )
         avg_task_time = numeric_input_with_range_hint(
-            "Average Task Completion Time (hours)", "Average_Task_Completion_Time", step=0.1
+            "Average Task Completion Time (hours)",
+            "Average_Task_Completion_Time",
+            step=0.1,
         )
         absence_days = numeric_input_with_range_hint(
             "Absence Days (this month)", "Absence_Days", step=1, integer=True
@@ -239,33 +372,49 @@ with predict_tab:
         # --- Population context histogram ---------------------------------
         # A histogram of every employee's real productivity score, with a
         # vertical dashed line marking where THIS prediction falls.
+        palette = active_palette()
         hist_fig = go.Figure()
         hist_fig.add_trace(
             go.Histogram(
                 x=df[TARGET_COLUMN],
-                nbinsx=40,
+                # Bins are pinned explicitly to the score's real 0-100
+                # range, rather than left to Plotly's automatic "nice
+                # number" bin sizing, so every bin edge stays inside the
+                # range a score can actually take (the target is clipped
+                # to 0-100 in generate_dataset.py).
+                xbins=dict(start=0, end=100, size=2.5),
                 name="All employees",
-                marker_color="#6C8EBF",
+                marker_color=palette["series"],
+                hovertemplate="%{x} score<br>%{y} employees<extra></extra>",
             )
         )
+        # A thin gap between touching bars (rather than an outlined border)
+        # keeps each bin visually separate without adding ink that isn't data.
+        hist_fig.update_layout(bargap=0.04)
         # add_vline draws a vertical line straight across the chart at a
         # given x position — here, the predicted score.
         hist_fig.add_vline(
             x=prediction,
-            line_width=3,
+            line_width=2,
             line_dash="dash",
-            line_color="#D9534F",
-            annotation_text="Your prediction",
+            line_color=palette["highlight"],
+            annotation_text="<b>Your prediction</b>",
             annotation_position="top",
+            annotation_font_color=palette["highlight"],
+            annotation_font_size=12,
         )
-        hist_fig.update_layout(
+        style_chart(
+            hist_fig,
+            palette,
             title="Where this prediction falls among all employees",
             xaxis_title="Monthly Productivity Score",
             yaxis_title="Number of employees",
             height=320,
-            margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(hist_fig, width='stretch')
+        # The modebar (zoom/pan/export icons) isn't useful on a read-only
+        # dashboard chart like this one, so it's hidden — one less thing
+        # competing with the title for space at the top of the chart.
+        st.plotly_chart(hist_fig, width="stretch", config={"displayModeBar": False})
 
         # --- Contribution breakdown (waterfall chart) ----------------------
         # A linear regression prediction is always:
@@ -276,7 +425,9 @@ with predict_tab:
         # ML models where this kind of breakdown isn't so straightforward.
         labels = ["Baseline"]
         values = [model.intercept_]
-        measures = ["absolute"]  # "absolute" = draw this bar from 0, not stacked on the previous one
+        measures = [
+            "absolute"
+        ]  # "absolute" = draw this bar from 0, not stacked on the previous one
 
         # Always show every numeric feature's contribution, even if it's
         # small, since every numeric feature always has some value.
@@ -284,7 +435,9 @@ with predict_tab:
             contribution = coefficients[col] * input_row.iloc[0][col]
             labels.append(pretty_label(col))
             values.append(contribution)
-            measures.append("relative")  # "relative" = stack on top of the running total so far
+            measures.append(
+                "relative"
+            )  # "relative" = stack on top of the running total so far
 
         # For the one-hot (Department_*, Job_Level_*) columns, only show a
         # bar when that column is actually "on" (equal to 1) for this
@@ -296,32 +449,75 @@ with predict_tab:
                 values.append(coefficients[col])
                 measures.append("relative")
 
+        # A "total" measure's bar height is computed by Plotly automatically
+        # — the running sum of everything before it (baseline plus every
+        # contribution above) — regardless of the y-value we give it; 0 is
+        # just a required placeholder. The on-bar text label has no such
+        # magic, so the running total is computed here directly (the same
+        # number as raw_prediction: baseline plus every contribution the
+        # model actually applied) and used to label that bar.
+        predicted_total = sum(values)
         labels.append("Predicted score")
-        values.append(0)  # ignored by Plotly for "total" bars — it sums everything automatically
+        values.append(0)
         measures.append("total")
 
-        waterfall_fig = go.Figure(
+        waterfall_fig = go.Figure()
+        waterfall_fig.add_trace(
             go.Waterfall(
                 x=labels,
                 y=values,
                 measure=measures,
-                connector={"line": {"color": "rgba(120,120,120,0.4)"}},
-                increasing={"marker": {"color": "#5CB85C"}},
-                decreasing={"marker": {"color": "#D9534F"}},
-                totals={"marker": {"color": "#6C8EBF"}},
-                text=[f"{v:+.1f}" if lbl not in ("Baseline", "Predicted score") else f"{v:.1f}"
-                      for lbl, v in zip(labels, values)],
+                connector={"line": {"color": palette["grid"], "width": 1}},
+                increasing={"marker": {"color": palette["positive"]}},
+                decreasing={"marker": {"color": palette["negative"]}},
+                totals={"marker": {"color": palette["neutral"]}},
+                text=[
+                    f"{v:.1f}"
+                    if lbl == "Baseline"
+                    else f"{predicted_total:.1f}"
+                    if lbl == "Predicted score"
+                    else f"{v:+.1f}"
+                    for lbl, v in zip(labels, values)
+                ],
                 textposition="outside",
+                textfont=dict(color=palette["text_primary"]),
+                showlegend=False,
             )
         )
-        waterfall_fig.update_layout(
+        # go.Waterfall draws its three bar colors (increasing / decreasing /
+        # total) from one trace, so Plotly can't generate a legend entry per
+        # color on its own. Add three invisible marker-only traces purely so
+        # the reader gets a legend explaining what each bar color means —
+        # without one, "why is this bar red and that one blue?" has no
+        # answer on the chart itself.
+        for legend_name, color in (
+            ("Increases score", palette["positive"]),
+            ("Decreases score", palette["negative"]),
+            ("Running total", palette["neutral"]),
+        ):
+            waterfall_fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="markers",
+                    marker=dict(size=10, color=color, symbol="square"),
+                    name=legend_name,
+                    hoverinfo="skip",
+                )
+            )
+        style_chart(
+            waterfall_fig,
+            palette,
             title="How each input contributed to this prediction",
             yaxis_title="Productivity points",
-            height=420,
-            margin=dict(t=50, b=10, l=10, r=10),
-            showlegend=False,
+            height=560,
+            margin_b=160,
+            legend_y=-0.62,
+            showlegend=True,
         )
-        st.plotly_chart(waterfall_fig, width='stretch')
+        st.plotly_chart(
+            waterfall_fig, width="stretch", config={"displayModeBar": False}
+        )
 
 
 # =================================================================================
@@ -348,19 +544,28 @@ with performance_tab:
 
     # --- Actual vs Predicted scatter plot ---------------------------------------
     with chart_left:
+        palette = active_palette()
         scatter_fig = go.Figure()
         scatter_fig.add_trace(
             go.Scatter(
                 x=y_test,
                 y=y_pred,
                 mode="markers",
-                marker=dict(color="#6C8EBF", size=6, opacity=0.5),
+                marker=dict(
+                    color=palette["series"],
+                    size=8,
+                    opacity=0.55,
+                    line=dict(color=palette["surface"], width=1),
+                ),
                 name="Test employees",
+                hovertemplate="Actual: %{x:.1f}<br>Predicted: %{y:.1f}<extra></extra>",
             )
         )
         # A perfect model would put every point exactly on this diagonal
         # line (predicted == actual). The closer the dots hug the line,
-        # the better the model.
+        # the better the model. It's a reference to compare the data
+        # against, not data itself, so it gets a direct label instead of a
+        # legend entry.
         axis_min = float(min(y_test.min(), y_pred.min()))
         axis_max = float(max(y_test.max(), y_pred.max()))
         scatter_fig.add_trace(
@@ -368,18 +573,29 @@ with performance_tab:
                 x=[axis_min, axis_max],
                 y=[axis_min, axis_max],
                 mode="lines",
-                line=dict(color="#D9534F", dash="dash"),
+                line=dict(color=palette["guide"], dash="dash", width=2),
                 name="Perfect prediction",
+                hoverinfo="skip",
             )
         )
-        scatter_fig.update_layout(
+        scatter_fig.add_annotation(
+            x=axis_max,
+            y=axis_max,
+            text="Perfect prediction",
+            showarrow=False,
+            xanchor="right",
+            yanchor="bottom",
+            font=dict(color=palette["guide"], size=11),
+        )
+        style_chart(
+            scatter_fig,
+            palette,
             title="Actual vs. Predicted productivity score",
             xaxis_title="Actual score",
             yaxis_title="Predicted score",
             height=400,
-            margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(scatter_fig, width='stretch')
+        st.plotly_chart(scatter_fig, width="stretch", config={"displayModeBar": False})
 
     # --- Residuals plot -----------------------------------------------------------
     with chart_right:
@@ -395,19 +611,35 @@ with performance_tab:
                 x=y_pred,
                 y=residuals,
                 mode="markers",
-                marker=dict(color="#F0AD4E", size=6, opacity=0.5),
+                marker=dict(
+                    color=palette["series"],
+                    size=8,
+                    opacity=0.55,
+                    line=dict(color=palette["surface"], width=1),
+                ),
                 name="Residual",
+                hovertemplate="Predicted: %{x:.1f}<br>Residual: %{y:+.1f}<extra></extra>",
             )
         )
-        resid_fig.add_hline(y=0, line_color="#D9534F", line_dash="dash")
-        resid_fig.update_layout(
+        resid_fig.add_hline(
+            y=0,
+            line_color=palette["guide"],
+            line_dash="dash",
+            line_width=2,
+            annotation_text="Perfect prediction",
+            annotation_position="top left",
+            annotation_font_color=palette["guide"],
+            annotation_font_size=11,
+        )
+        style_chart(
+            resid_fig,
+            palette,
             title="Residuals (Actual - Predicted) vs. Predicted score",
             xaxis_title="Predicted score",
             yaxis_title="Residual",
             height=400,
-            margin=dict(t=50, b=10, l=10, r=10),
         )
-        st.plotly_chart(resid_fig, width='stretch')
+        st.plotly_chart(resid_fig, width="stretch", config={"displayModeBar": False})
 
     # --- Learned coefficients bar chart --------------------------------------------
     st.subheader("What the model learned")
@@ -418,19 +650,44 @@ with performance_tab:
     )
 
     sorted_coefficients = coefficients.sort_values()
-    coef_fig = go.Figure(
+    coef_categories = [pretty_label(c) for c in sorted_coefficients.index]
+    # Split into two traces (rather than one trace with a per-bar color
+    # list) so each color gets its own legend entry — otherwise "blue means
+    # increases, red means decreases" only lives in the prose above the
+    # chart, not on the chart itself. Each row gets a real value in exactly
+    # one trace and None in the other, so the two traces never overlap.
+    positive_values = [v if v >= 0 else None for v in sorted_coefficients.values]
+    negative_values = [v if v < 0 else None for v in sorted_coefficients.values]
+    coef_fig = go.Figure()
+    coef_fig.add_trace(
         go.Bar(
-            x=sorted_coefficients.values,
-            y=[pretty_label(c) for c in sorted_coefficients.index],
+            x=positive_values,
+            y=coef_categories,
             orientation="h",
-            marker_color=[
-                "#5CB85C" if v >= 0 else "#D9534F" for v in sorted_coefficients.values
-            ],
+            marker_color=palette["positive"],
+            name="Increases score",
+            hovertemplate="%{y}: %{x:+.2f} pts<extra></extra>",
         )
     )
-    coef_fig.update_layout(
+    coef_fig.add_trace(
+        go.Bar(
+            x=negative_values,
+            y=coef_categories,
+            orientation="h",
+            marker_color=palette["negative"],
+            name="Decreases score",
+            hovertemplate="%{y}: %{x:+.2f} pts<extra></extra>",
+        )
+    )
+    coef_fig.update_layout(barmode="overlay", bargap=0.3)
+    style_chart(
+        coef_fig,
+        palette,
+        title=None,
         xaxis_title="Coefficient (productivity points per unit)",
         height=500,
-        margin=dict(t=10, b=10, l=10, r=10),
+        margin_t=10,
+        margin_b=50,
+        showlegend=True,
     )
-    st.plotly_chart(coef_fig, width='stretch')
+    st.plotly_chart(coef_fig, width="stretch", config={"displayModeBar": False})
