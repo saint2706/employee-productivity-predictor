@@ -1,7 +1,7 @@
 /* ============================================================================
    Employee Productivity Predictor — front-end behavior
    ----------------------------------------------------------------------------
-   This page is server-rendered once (see templates/index.html / app.py),
+   This page is server-rendered once (see templates/index.html / flask_app.py),
    then everything below takes over: switching tabs, live-validating typed
    numbers against the dataset's observed range, calling POST /api/predict
    whenever the form changes, and drawing every chart with Plotly.js.
@@ -54,7 +54,7 @@
       : PALETTE_LIGHT;
   }
 
-  // --- Shared chart chrome, mirroring model_core-adjacent app.py's style ----
+  // --- Shared chart chrome, mirroring model_core-adjacent flask_app.py's style ----
   function axisKwargs(palette, text) {
     const kwargs = {
       tickfont: { color: palette.text_muted },
