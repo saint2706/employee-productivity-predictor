@@ -1,5 +1,10 @@
-streamlit>=1.51
 pandas>=2.0
 numpy>=1.24
 scikit-learn>=1.4
+
+# app.py (Streamlit version)
+streamlit>=1.51
 plotly>=5.18
+
+# flask_app.py (Flask version)
+flask>=3.0
